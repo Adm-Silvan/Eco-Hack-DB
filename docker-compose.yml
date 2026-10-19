@@ -1,0 +1,68 @@
+services:
+  weaviate:
+    image: cr.weaviate.io/semitechnologies/weaviate:1.40.1
+    command:
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --scheme
+      - http
+    restart: unless-stopped
+    environment:
+      QUERY_DEFAULTS_LIMIT: "25"
+      PERSISTENCE_DATA_PATH: /var/lib/weaviate
+      CLUSTER_HOSTNAME: node1
+
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "false"
+      AUTHENTICATION_APIKEY_ENABLED: "true"
+      AUTHENTICATION_APIKEY_ALLOWED_KEYS: "${WEAVIATE_ADMIN_KEY},${WEAVIATE_APP_KEY},${WEAVIATE_VIEWER_KEY}"
+      AUTHENTICATION_APIKEY_USERS: "operator,application,explorer"
+
+      AUTHORIZATION_ADMINLIST_ENABLED: "true"
+      AUTHORIZATION_ADMINLIST_USERS: "operator"
+      AUTHORIZATION_ADMINLIST_READONLY_USERS: "application,explorer"
+    volumes:
+      - weaviate_data:/var/lib/weaviate
+    networks:
+      - backend
+    # Do not add public port mappings for 8080 or 50051.
+
+  wvsee:
+    build:
+      context: ./wvsee
+      args:
+        WEAVIATE_URL: http://weaviate:8080
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      WEAVIATE_URL: http://weaviate:8080
+      WEAVIATE_API_KEY: ${WEAVIATE_VIEWER_KEY}
+    depends_on:
+      - weaviate
+    networks:
+      - backend
+    # NPM is the only public route to this container.
+
+  nginx-proxy-manager:
+    image: jc21/nginx-proxy-manager:2.16.0
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      # Admin UI is available only on the VM itself.
+      - "127.0.0.1:81:81"
+    volumes:
+      - npm_data:/data
+      - npm_letsencrypt:/etc/letsencrypt
+    networks:
+      - backend
+
+volumes:
+  weaviate_data:
+  npm_data:
+  npm_letsencrypt:
+
+networks:
+  backend:
